@@ -200,3 +200,7 @@ Feature: hub ci-status
       """
     When I successfully run `hub ci-status the_sha`
     Then the output should contain exactly "success\n"
+
+  Scenario: Derive SHA from pull request number
+    Given there is a pull request with number "pr_number"
+    Then the SHA should be taken from the pull requests Head SHA
