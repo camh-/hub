@@ -13,12 +13,16 @@ import (
 
 var (
 	cmdPr = &Command{
-		Run: printHelp,
+		Run: pullRequest,
 		Usage: `
 pr list [-s <STATE>] [-h <HEAD>] [-b <BASE>] [-o <SORT_KEY> [-^]] [-f <FORMAT>] [-L <LIMIT>]
 pr checkout <PR-NUMBER> [<BRANCH>]
 pr show [-uc] [-f <FORMAT>] [-h <HEAD>]
 pr show [-uc] [-f <FORMAT>] <PR-NUMBER>
+pr new [-focpd] [-b <BASE>] [-h <HEAD>] [-r <REVIEWERS> ] [-a <ASSIGNEES>] [-M <MILESTONE>] [-l <LABELS>]
+pr new -m <MESSAGE> [--edit]
+pr new -F <FILE> [--edit]
+pr new -i <ISSUE>
 `,
 		Long: `Manage GitHub Pull Requests for the current repository.
 
@@ -35,6 +39,10 @@ pr show [-uc] [-f <FORMAT>] <PR-NUMBER>
 		specified, <HEAD> is used to look up open pull requests and defaults to
 		the current branch name. With ''--format'', print information about the
 		pull request instead of opening it.
+
+	* _new_:
+		Create a GitHub Pull Request. This is an alias for the "pull-request"
+		hub command.
 
 ## Options:
 
@@ -173,12 +181,19 @@ hub-issue(1), hub-pull-request(1), hub(1)
 		--color
 `,
 	}
+
+	cmdNewPr = &Command{
+		Key:  "new",
+		Run:  pullRequest,
+		Long: cmdPullRequest.Long,
+	}
 )
 
 func init() {
 	cmdPr.Use(cmdListPulls)
 	cmdPr.Use(cmdCheckoutPr)
 	cmdPr.Use(cmdShowPr)
+	cmdPr.Use(cmdNewPr)
 	CmdRunner.Use(cmdPr)
 }
 
