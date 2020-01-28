@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 
 	"github.com/github/hub/git"
 	"github.com/github/hub/github"
@@ -32,6 +33,9 @@ var cmdCiStatus = &Command{
 		%sC: set color to red, green, or yellow, depending on state
 
 		%t: name of the status check
+
+	-p, --pr <PR-NUMBER>
+		Get <COMMIT> from the pull request <PR-NUMBER>.
 
 	--color[=<WHEN>]
 		Enable colored output even if stdout is not a terminal. <WHEN> can be one
@@ -80,8 +84,10 @@ func checkSeverity(targetState string) int {
 
 func ciStatus(cmd *Command, args *Args) {
 	ref := "HEAD"
-	if !args.IsParamsEmpty() {
-		ref = args.RemoveParam(0)
+	hasParam := !args.IsParamsEmpty()
+	statusByPR := args.Flag.HasReceived("--pr")
+	if hasParam && statusByPR {
+		utils.Check(fmt.Errorf("Cannot use <COMMIT> with --pr"))
 	}
 
 	localRepo, err := github.LocalRepo()
@@ -89,6 +95,19 @@ func ciStatus(cmd *Command, args *Args) {
 
 	project, err := localRepo.MainProject()
 	utils.Check(err)
+
+	gh := github.NewClient(project.Host)
+
+	if hasParam {
+		ref = args.RemoveParam(0)
+	} else if statusByPR {
+		prNumberString := args.Flag.Value("--pr")
+		_, err := strconv.Atoi(prNumberString)
+		utils.Check(err)
+		pr, err := gh.PullRequest(project, prNumberString)
+		utils.Check(err)
+		ref = pr.Head.Sha
+	}
 
 	sha, err := git.Ref(ref)
 	if err != nil {
@@ -98,46 +117,46 @@ func ciStatus(cmd *Command, args *Args) {
 
 	if args.Noop {
 		ui.Printf("Would request CI status for %s\n", sha)
-	} else {
-		gh := github.NewClient(project.Host)
-		response, err := gh.FetchCIStatus(project, sha)
-		utils.Check(err)
-
-		state := ""
-		if len(response.Statuses) > 0 {
-			for _, status := range response.Statuses {
-				if checkSeverity(status.State) > checkSeverity(state) {
-					state = status.State
-				}
-			}
-		}
-
-		var exitCode int
-		switch state {
-		case "success", "neutral":
-			exitCode = 0
-		case "failure", "error", "action_required", "cancelled", "timed_out":
-			exitCode = 1
-		case "pending":
-			exitCode = 2
-		default:
-			exitCode = 3
-		}
-
-		verbose := args.Flag.Bool("--verbose") || args.Flag.HasReceived("--format")
-		if verbose && len(response.Statuses) > 0 {
-			colorize := colorizeOutput(args.Flag.HasReceived("--color"), args.Flag.Value("--color"))
-			ciVerboseFormat(response.Statuses, args.Flag.Value("--format"), colorize)
-		} else {
-			if state != "" {
-				ui.Println(state)
-			} else {
-				ui.Println("no status")
-			}
-		}
-
-		os.Exit(exitCode)
+		return
 	}
+
+	response, err := gh.FetchCIStatus(project, sha)
+	utils.Check(err)
+
+	state := ""
+	if len(response.Statuses) > 0 {
+		for _, status := range response.Statuses {
+			if checkSeverity(status.State) > checkSeverity(state) {
+				state = status.State
+			}
+		}
+	}
+
+	var exitCode int
+	switch state {
+	case "success", "neutral":
+		exitCode = 0
+	case "failure", "error", "action_required", "cancelled", "timed_out":
+		exitCode = 1
+	case "pending":
+		exitCode = 2
+	default:
+		exitCode = 3
+	}
+
+	verbose := args.Flag.Bool("--verbose") || args.Flag.HasReceived("--format")
+	if verbose && len(response.Statuses) > 0 {
+		colorize := colorizeOutput(args.Flag.HasReceived("--color"), args.Flag.Value("--color"))
+		ciVerboseFormat(response.Statuses, args.Flag.Value("--format"), colorize)
+	} else {
+		if state != "" {
+			ui.Println(state)
+		} else {
+			ui.Println("no status")
+		}
+	}
+
+	os.Exit(exitCode)
 }
 
 func ciVerboseFormat(statuses []github.CIStatus, formatString string, colorize bool) {
